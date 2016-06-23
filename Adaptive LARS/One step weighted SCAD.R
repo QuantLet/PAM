@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------
-# One-step weighted SCAD penalized regression
+# Penalized weighted SCAD penalized regression
 # -------------------------------------------------------------------------------
 
 rm(list = ls(all = TRUE))
