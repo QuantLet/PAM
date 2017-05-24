@@ -2,13 +2,15 @@
 # Multiple-step weighted SCAD penalized regression
 # -------------------------------------------------------------------------------
 
-rm(list = ls(all = TRUE))
-graphics.off()
-
-libraries = c("MASS", "bbmle", "glmnet")
-lapply(libraries, function(x) if (!(x %in% installed.packages())) {
-  install.packages(x)} )
-lapply(libraries, library, quietly = TRUE, character.only = TRUE)
+# rm(list = ls(all = TRUE))
+# graphics.off()
+# 
+# setwd("")
+#
+# libraries = c("MASS", "bbmle", "glmnet")
+# lapply(libraries, function(x) if (!(x %in% installed.packages())) {
+#   install.packages(x)} )
+# lapply(libraries, library, quietly = TRUE, character.only = TRUE)
 
 # Define function for computing derivative of the SCAD penalty
 pen.prime = function(beta, lambda, a){
@@ -18,6 +20,22 @@ pen.prime = function(beta, lambda, a){
     tmp[j]   = max(a * lambda - abs(beta[j]), 0)
   }
   pen.value  = (lambda * indicator) + ((tmp/(a - 1)) * (1 - indicator))
+  pen.value
+}
+
+# Define function for computing the SCAD penalty
+pen.scad = function(beta, lambda, a){
+  pen.value = numeric(0)
+  for (j in 1:n.par){
+    if (abs(beta[j]) <= lambda){
+      pen.value[j] = lambda * abs(beta[j])
+    } else if (lambda < abs(beta[j]) && abs(beta[j]) <= a * lambda){
+      pen.value[j] = - ((abs(beta[j])^2 - 2 * a * lambda * abs(beta[j]) + lambda^2)/
+                         (2 * (a - 1)))
+    } else {
+      pen.value[j] =  ((a + 1) * lambda^2)/2
+    }
+  }
   pen.value
 }
 
@@ -88,58 +106,9 @@ w.fct = function(beta){
   return(wght)
 }
 
-# Simulation setup
-n.obs       = 1000            # No of observations
-n.par       = 100             # No of parameters
-n.sim       = 100             # No of simulationsI also 
-seed.X      = 2222            # Seed simulation for X
-seed.eps    = 2333            # Seed simulation for epsilon
-r           = 0.5             # Correlation parameter of X
-sd.eps      = 1               # Standard deviation of epsilon
-lambda.grid = seq(1 * n.obs^(-1/5), 30 * n.obs^(-1/5), 1 * n.obs^(-1/5))   # Define grid of lambdas
-a           = 3.7             # Recommended value of parameter a for SCAD
-# s           = 1               # For now use only 1 simulated scenario
 
-# Simulation of the error term
-eps = list()
-set.seed(seed.eps)
-for (i in 1:n.sim){
-eps[[i]] = rnorm(n.obs, mean = 0, sd = sd.eps)
-}
-
-# Simulation of true beta coefficients  
-tmp1  = c(10,8,6,4,2,1,0.5)#rep(1, 5)
-tmp2  = rep(0, (n.par - length(tmp1)))
-b     = c(tmp1, tmp2)
-beta0 = rep(0, n.par)
-
-# Simulation of the design matrix
-mu    = rep(0, n.par)
-Sigma = matrix(0, nrow = n.par, ncol = n.par)
-for (i in 1:n.par) {
-  for (j in 1:n.par) {
-    Sigma[i, j] = ifelse(i == j, 1, r^abs(i - j))
-  }
-}
-
-X = list()
-set.seed(seed.X)
-for (i in 1:n.sim){
-  X[[i]] = mvrnorm(n = n.obs, mu, Sigma)
-}  
-
-# Computation of Y
-Y = list()
-for (i in 1:n.sim){
-  Y.tmp = numeric(0)
-  for (j in 1:n.obs){
-    Y.tmp = c(Y.tmp, b %*% X[[i]][j, ] + eps[[i]][j])
-  }
-Y[[i]] = Y.tmp
-}
-
-# Define function to compute iterative weighted SCAD algorithm
-Adapt.SCAD = function(X, Y, a, n.obs){
+# Define function to compute iterative weighted SCAD algorithm, Li&Zou(2008)
+Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
   # X = X.tmp
   # Y = Y.tmp
   # n.obs = k*M
@@ -238,9 +207,10 @@ Adapt.SCAD = function(X, Y, a, n.obs){
     beta.fit      = beta.tmp[[index]]
     lambda.fit    = lambda.grid[index]
     weights.fit   = weights.tmp[[index]]
-    pen.fit       = pen.prime(beta.fit, lambda.fit, a)
+    pen.fit       = pen.scad(beta.fit, lambda.fit, a)
     conv          = max(abs(beta.fit.prev - beta.fit)) # Difference between 2 steps of iteration
     step          = step + 1
+    if (step > max.steps) {break}
   }
   
   values        = list(beta.fit, lambda.grid[index], step, act.set[[index]], weights.fit, pen.fit)
@@ -248,30 +218,30 @@ Adapt.SCAD = function(X, Y, a, n.obs){
   return(values)
 }
 
-beta.sim         = numeric(0)
-lambda.sim       = numeric(0)
-steps.sim        = numeric(0)
-act.set.sim      = numeric(0)
-beta.sim.1step   = numeric(0)
-lambda.sim.1step = numeric(0)
-steps.sim.1step  = numeric(0)
-act.set.sim.1step  = numeric(0)
-for (s in 1:n.sim){
-  tmp               = Adapt.SCAD(X[[s]], Y[[s]], a, n.obs)
-  tmp.1step         = SCAD.1step(X[[s]], Y[[s]], a)
-  beta.sim          = cbind(beta.sim, tmp$beta)
-  lambda.sim        = cbind(lambda.sim, tmp$lambda)
-  steps.sim         = cbind(steps.sim, tmp$no.steps)
-  act.set.sim       = cbind(act.set.sim, tmp$act.set)
-  beta.sim.1step    = cbind(beta.sim.1step, tmp.1step$beta)
-  lambda.sim.1step  = cbind(lambda.sim.1step, tmp.1step$lambda)
-  steps.sim.1step   = cbind(steps.sim.1step, tmp.1step$no.steps)
-  act.set.sim.1step = cbind(act.set.sim.1step, tmp.1step$act.set)
-}
-mean.beta.sim       = apply(beta.sim, 1, mean)
-mean.beta.sim.1step = apply(beta.sim, 1, mean)
-diff                = beta.sim - beta.sim.1step
-summary(diff)
-plot(mean.beta.sim, type = "l")
-lines(mean.beta.sim.1step, col = "red")
-beta.sim[,1]
+# beta.sim         = numeric(0)
+# lambda.sim       = numeric(0)
+# steps.sim        = numeric(0)
+# act.set.sim      = numeric(0)
+# beta.sim.1step   = numeric(0)
+# lambda.sim.1step = numeric(0)
+# steps.sim.1step  = numeric(0)
+# act.set.sim.1step  = numeric(0)
+# for (s in 1:n.sim){
+#   tmp               = Adapt.SCAD(X[[s]], Y[[s]], a, n.obs)
+#   tmp.1step         = SCAD.1step(X[[s]], Y[[s]], a)
+#   beta.sim          = cbind(beta.sim, tmp$beta)
+#   lambda.sim        = cbind(lambda.sim, tmp$lambda)
+#   steps.sim         = cbind(steps.sim, tmp$no.steps)
+#   act.set.sim       = cbind(act.set.sim, tmp$act.set)
+#   beta.sim.1step    = cbind(beta.sim.1step, tmp.1step$beta)
+#   lambda.sim.1step  = cbind(lambda.sim.1step, tmp.1step$lambda)
+#   steps.sim.1step   = cbind(steps.sim.1step, tmp.1step$no.steps)
+#   act.set.sim.1step = cbind(act.set.sim.1step, tmp.1step$act.set)
+# }
+# mean.beta.sim       = apply(beta.sim, 1, mean)
+# mean.beta.sim.1step = apply(beta.sim, 1, mean)
+# diff                = beta.sim - beta.sim.1step
+# summary(diff)
+# plot(mean.beta.sim, type = "l")
+# lines(mean.beta.sim.1step, col = "red")
+# beta.sim[,1]

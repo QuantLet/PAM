@@ -5,6 +5,8 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 
+# setwd("")
+
 libraries = c("MASS", "bbmle", "glmnet")
 lapply(libraries, function(x) if (!(x %in% installed.packages())) {
   install.packages(x)} )
@@ -18,6 +20,22 @@ pen.prime = function(beta, lambda, a){
     tmp[j]   = max(a * lambda - abs(beta[j]), 0)
   }
   pen.value  = (lambda * indicator) + ((tmp/(a - 1)) * (1 - indicator))
+  pen.value
+}
+
+# Define function for computing the SCAD penalty
+pen.scad = function(beta, lambda, a){
+  pen.value = numeric(0)
+  for (j in 1:n.par){
+    if (abs(beta[j]) <= lambda){
+      pen.value[j] = lambda * abs(beta[j])
+    } else if (lambda < abs(beta[j]) && abs(beta[j]) <= a * lambda){
+      pen.value[j] = - ((abs(beta[j])^2 - 2 * a * lambda * abs(beta[j]) + lambda^2)/
+                          (2 * (a - 1)))
+    } else {
+      pen.value[j] =  ((a + 1) * lambda^2)/2
+    }
+  }
   pen.value
 }
 
@@ -83,7 +101,6 @@ seed.X      = 2222            # Seed simulation for X
 seed.eps    = 2333            # Seed simulation for epsilon
 r           = 0.5             # Correlation parameter of X
 sd.eps      = 1               # Standard deviation of epsilon
-lambda.grid = seq(1 * n.obs^(-1/5), 30 * n.obs^(-1/5), 1 * n.obs^(-1/5))   # Define grid of lambdas
 a           = 3.7             # Recommended value of parameter a for SCAD
 # s           = 1               # For now use only 1 simulated scenario
 
@@ -132,6 +149,7 @@ SCAD.1step = function(X, Y, a){
   beta.prev   = list()
   weights.tmp = list()
   act.set     = list()
+  lambda.grid = seq(1 * n.obs^(-1/5), 30 * n.obs^(-1/5), 1 * n.obs^(-1/5))   # Define grid of lambdas
   for (l in 1:length(lambda.grid)){
     lambda    = lambda.grid[l]
     # 0. STEP: Find initial values of coefficients - OLS fit
@@ -219,8 +237,9 @@ SCAD.1step = function(X, Y, a){
                            %*% (Y - X.star %*% beta.tmp[[l]])) / (1 - (act.set[[l]]/n.obs))  
   }
   index         = which.min(gcv)
-  values        = list(beta.tmp[[index]], lambda.grid[index], act.set[[index]])
-  names(values) = c("beta", "lambda", "act.set")
+  pen.fit       = pen.scad(beta.tmp[[index]], lambda.grid[index], a)
+  values        = list(beta.tmp[[index]], lambda.grid[index], act.set[[index]], pen.fit)
+  names(values) = c("beta", "lambda", "act.set", "penalty")
   return(values)
 }
 
