@@ -1,5 +1,5 @@
 # -------------------------------------------------------------------------------
-# Critical values calibration using Multiplier Bootstrap
+# Critical values calibration using Multiplier Bootstrap and SCAD
 # -------------------------------------------------------------------------------
 
 rm(list = ls(all = TRUE))
@@ -16,14 +16,14 @@ lapply(libraries, library, quietly = TRUE, character.only = TRUE)
 source("Adapt.SCAD_withCV.r")
 
 # Simulation setup
-n.obs      = 1200            # no of observations
-n.par      = 20              # no of parameters
-n.sim      = 1000            # no of simulations
-seed1      = 20150206        # seed simulation X
-seed2      = 20150602        # seed simulation epsilon
-M          = 50              # increment of observations between successive subsamples
-K          = 24              # number of subsamples
-sd.eps     = 1               # st. dev. of the error term
+n.obs       = 1200            # no of observations
+n.par       = 20              # no of parameters
+n.sim       = 1               # no of simulations
+seed1       = 20150206        # seed simulation X
+seed2       = 20150602        # seed simulation epsilon
+M           = 50              # increment of observations between successive subsamples
+K           = 24              # number of subsamples
+sd.eps      = 1               # st. dev. of the error term
 max.steps   = 50                # Max no of iterations in Adapt.SCAD
 lambda.grid = seq(1 * n.obs^(-1/3), 30 * n.obs^(-1/3), 1 * n.obs^(-1/3))   # Define grid of lambdas
 a           = 3.7             # Recommended value of parameter a for SCAD
@@ -88,9 +88,10 @@ if (h != 0){
 
 # Function to find betas
 find.betas = function(l){
-  betas = list()
-  wghts = list()
-  pens  = list()
+  betas  = list()
+  wghts  = list()
+  pens   = list()
+  lambda = list()
   s1 = ifelse(l == 1, 1, sum(n.simcores[1:(l - 1)],1))
   s2 = sum(n.simcores[1:l])
   
@@ -98,40 +99,46 @@ find.betas = function(l){
     ad.beta    = numeric(0)
     ad.penalty = numeric(0)
     ad.weights = numeric(0)
+    ad.lambda  = numeri(0)
     for (k in 1:K){
-      X.tmp       = X[[s]][1:(k * M),]
-      Y.tmp       = Y[[s]][1:(k * M)]
-      adapt.estim = Adapt.SCAD(X.tmp, Y.tmp, a, (k * M), max.steps)
-      beta.fit    = adapt.estim$beta
-      pen.fit     = adapt.estim$penalty
-      w.fit       = adapt.estim$weights
+      X.tmp          = X[[s]][1:(k * M),]
+      Y.tmp          = Y[[s]][1:(k * M)]
+      adapt.estim    = Adapt.SCAD(X.tmp, Y.tmp, a, (k * M), max.steps)
+      beta.fit       = adapt.estim$beta
+      pen.fit        = adapt.estim$penalty
+      w.fit          = adapt.estim$weights
+      l.fit          = adapt.estim$lambda
       
-      ad.beta     = cbind(ad.beta, beta.fit)
-      ad.penalty  = cbind(ad.penalty, pen.fit)
-      ad.weights  = cbind(ad.weights, w.fit)
+      ad.beta        = cbind(ad.beta, beta.fit)
+      ad.penalty     = cbind(ad.penalty, pen.fit)
+      ad.weights     = cbind(ad.weights, w.fit)
+      ad.lambda      = cbind(ad.lambda, l.fit)
     }
-    stmp          = s - s1 + 1
-    betas[[stmp]] = ad.beta
-    pens[[stmp]]  = ad.penalty
-    wghts[[stmp]] = ad.weights
+    stmp             = s - s1 + 1
+    betas[[stmp]]    = ad.beta
+    pens[[stmp]]     = ad.penalty
+    wghts[[stmp]]    = ad.weights
+    lambdass[[stmp]] = ad.lambda
   }
-  values          = list(betas, pens, wghts)
-  names(values)   = c("betas", "pens", "wghts") 
+  values          = list(betas, pens, wghts, lambdas)
+  names(values)   = c("betas", "pens", "wghts", "lambdas") 
   return(values)
 }
 
 # Collect results from all used cores
 res.betas = function(n.cores, input){
-  betas = list()
-  pens  = list()
-  wghts = list()
+  betas   = list()
+  pens    = list()
+  wghts   = list()
+  lambdas = list()
   for (i in 1:n.cores){
-    betas = c(betas, input[[i]]$betas)
-    pens  = c(pens, input[[i]]$pens)
-    wghts = c(wghts, input[[i]]$wghts)
+    betas   = c(betas, input[[i]]$betas)
+    pens    = c(pens, input[[i]]$pens)
+    wghts   = c(wghts, input[[i]]$wghts)
+    lambdas = c(lambdas, input[[i]]$lambdas)
   }
-  values         = list(betas, pens, wghts)
-  names(values)  = c("betas", "pens", "wghts") 
+  values         = list(betas, pens, wghts, lambdas)
+  names(values)  = c("betas", "pens", "wghts", "lambdas") 
   return(values)
 }
 
@@ -141,9 +148,10 @@ betas.tmp   = foreach(i = 1:n.cores, .packages = "glmnet") %dopar% find.betas(i)
 Sys.time()
 final.betas = res.betas(n.cores, betas.tmp) 
 
-betas = final.betas$betas
-pens  = final.betas$pens
-wghts = final.betas$wghts
+betas   = final.betas$betas
+pens    = final.betas$pens
+wghts   = final.betas$wghts
+lambdas = final.betas$lambdas
 
 # Take 1 simulated scenario and create lists of betas, X's and Y's
 s = 1
@@ -182,15 +190,10 @@ loglik = function(beta){
   loglik1
 }
 
-n.steps = rep((K %/% n.cores), n.cores)
-h       = K %% n.cores
-if (h != 0){
-  n.steps[1:h] = n.steps[1:h] + 1
-}
-
-q90   = numeric(0)
-q95   = numeric(0)
-q97.5 = numeric(0)
+q90       = numeric(0)
+q95       = numeric(0)
+q97.5     = numeric(0)
+lik.ratio = numeric(0)
 Sys.time()
 for (k in 1:K){
   for (l in 1:n.boot){

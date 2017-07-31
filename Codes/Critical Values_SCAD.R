@@ -5,7 +5,7 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 
-# setwd("")
+# setwd("/Users/Lenka/Documents/IRTG 1792/Penalized Adaptive Method/PAM")
 
 # Install and load packages
 libraries = c("MASS", "bbmle", "glmnet", "doParallel")
@@ -16,13 +16,13 @@ lapply(libraries, library, quietly = TRUE, character.only = TRUE)
 source("Adapt.SCAD_withCV.r")
 
 # Simulation setup
-n.obs      = 1200             # no of observations
-n.par      = 20               # no of parameters
-n.sim      = 1000             # no of simulations
+n.obs      = 1000             # no of observations
+n.par      = 10               # no of parameters
+n.sim      = 1             # no of simulations
 seed1      = 20150206         # seed simulation X
 seed2      = 20150602         # seed simulation epsilon
 M          = 50               # increment of observations between successive subsamples
-K          = 24               # number of subsamples
+K          = 20               # number of subsamples
 sd.eps     = 1                # st. dev. of the error term
 risk.bound = gamma(1/2)       # Define risk bound 
 max.steps   = 50              # Max no of iterations in Adapt.SCAD
@@ -30,7 +30,7 @@ lambda.grid = seq(1 * n.obs^(-1/3), 30 * n.obs^(-1/3), 1 * n.obs^(-1/3))   # Def
 a           = 3.7             # Recommended value of parameter a for SCAD
 
 # True beta coefficients (homogeneous for all t = 1, ..., 1000)
-tmp1  = c(1, 1.5, 1, 1, 2, -3, -1.5, 1, 2, 5, 3, 1)
+tmp1  = c(1, 1, 1, 1, 1)
 tmp2  = rep(0, n.par - length(tmp1))
 b     = c(tmp1, tmp2)
 
@@ -103,7 +103,7 @@ find.betas = function(l){
       Y.tmp       = Y[[s]][1:(k * M)]
       adapt.estim = Adapt.SCAD(X.tmp, Y.tmp, a, (k * M), max.steps)
       beta.fit    = adapt.estim$beta
-      pen.fit     = adapt.estim$penalty
+      pen.fit     = adapt.estim$penaltyprime
       w.fit       = adapt.estim$weights
       
       ad.beta     = cbind(ad.beta, beta.fit)
@@ -155,22 +155,18 @@ test.stat = function(s, k, l){
   beta.tmp1 = as.matrix(betas[[s]][, k])
   pen.tmp1  = as.matrix(pens[[s]][, k])
   wght.tmp1 = as.matrix(wghts[[s]][, k])
-  loglik1   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp1)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp1))
-               - ((k * M) * t(pen.tmp1)
-                  %*% abs(wght.tmp1)))
+  loglik1   = (- (1/(2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+                  %*% (Y.tmp - X.tmp %*% beta.tmp1))
+               - ((k * M) * t(pen.tmp1) %*% abs(beta.tmp1)))
   
   beta.tmp2 = as.matrix(betas[[s]][, l])
   pen.tmp2  = as.matrix(pens[[s]][, l])
   wght.tmp2 = as.matrix(wghts[[s]][, l])
-  loglik2   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp2)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp2))
-               - ((k * M) * t(pen.tmp2)
-                  %*% abs(wght.tmp2)))
+  loglik2   = (- (1/(2 * sd.eps^2)  * t(Y.tmp - X.tmp %*% beta.tmp2)
+                   %*% (Y.tmp - X.tmp %*% beta.tmp2))
+               - ((k * M) * t(pen.tmp2) %*% abs(beta.tmp2)))
   
-  test.stat = sqrt(abs(loglik1 - loglik2))
+  test.stat = sqrt(2 * abs(loglik1 - loglik2))
   test.stat
 }
 
@@ -181,22 +177,18 @@ est.error = function(s, k){
   beta.tmp1 = as.matrix(betas[[s]][, k])
   pen.tmp1  = as.matrix(pens[[s]][, k])
   wght.tmp1 = as.matrix(wghts[[s]][, k])
-  loglik1   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp1)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp1))
-               - ((k * M) * t(pen.tmp1)
-                  %*% abs(wght.tmp1)))
+  loglik1   = (- (1/(2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+                   %*% (Y.tmp - X.tmp %*% beta.tmp1))
+               - ((k * M) * t(pen.tmp1) %*% abs(beta.tmp1)))
   
   beta.tmp2 = as.matrix(betas[[s]][, K])
   pen.tmp2  = as.matrix(pens[[s]][, K])
   wght.tmp2 = as.matrix(wghts[[s]][, K])
-  loglik2   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp2)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp2))
-               - ((k * M) * t(pen.tmp2)
-                  %*% abs(wght.tmp2)))
+  loglik2   = (- (1/(2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp2)
+                   %*% (Y.tmp - X.tmp %*% beta.tmp2))
+               - ((k * M) * t(pen.tmp2) %*% abs(beta.tmp2)))
   
-  est.error = sqrt(abs(loglik1 - loglik2))
+  est.error = sqrt(2 * abs(loglik1 - loglik2))
   est.error
 }
 
@@ -219,22 +211,19 @@ dist.fct = function(s, k, l){
   beta.tmp1 = as.matrix(betas[[s]][, k])
   pen.tmp1  = as.matrix(pens[[s]][, k])
   wght.tmp1 = as.matrix(wghts[[s]][, k])
-  loglik1   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp1)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp1))
-               - ((k * M) * t(pen.tmp1)
-                  %*% abs(wght.tmp1)))
+  loglik1   = (- (1/(2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+                %*% (Y.tmp - X.tmp %*% beta.tmp1))
+               - ((k * M) * t(pen.tmp1) %*% abs(beta.tmp1)))
   
   beta.tmp2 = as.matrix(betas[[s]][, l])
   pen.tmp2  = as.matrix(pens[[s]][, l])
   wght.tmp2 = as.matrix(wghts[[s]][, l])
-  loglik2   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
+  loglik2   = (- (1/(2 * sd.eps^2) 
                                                       * t(Y.tmp - X.tmp %*% beta.tmp2)
                                                       %*% (Y.tmp - X.tmp %*% beta.tmp2))
-               - ((k * M) * t(pen.tmp2)
-                  %*% abs(wght.tmp2)))
+               - ((k * M) * t(pen.tmp2) %*% abs(beta.tmp2)))
   
-  stoch.dist = sqrt(abs(loglik1 - loglik2))
+  stoch.dist = sqrt(2 * abs(loglik1 - loglik2))
   stoch.dist
 }
 
@@ -302,4 +291,3 @@ Sys.time()
 
 # Close cluster
 stopCluster(cl)
-

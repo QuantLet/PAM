@@ -5,7 +5,7 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 
-# setwd("")
+# setwd("/Users/Lenka/Documents/IRTG 1792/Penalized Adaptive Method/PAM")
 
 # Install and load packages
 libraries = c("MASS", "bbmle", "glmnet", "doParallel")
@@ -16,20 +16,22 @@ lapply(libraries, library, quietly = TRUE, character.only = TRUE)
 source("Adapt.SCAD_withCV.r")
 
 # Simulation setup
-n.obs       = 1200              # No of observations
-n.par       = 20                # No of parameters
-n.sim       = 20                # No of simulations
+n.obs       = 1000              # No of observations
+n.par       = 10                # No  of parameters
+n.sim       = 500               # No of simulations
 seed1       = 20150206          # Seed simulation X
 seed2       = 20150602          # Seed simulation epsilon
 r           = 0.5               # Correlation parameter of X
 sd.eps      = 1                 # Standard deviation of epsilon
-cp1.seq     = seq(50, 100, 50)  # Define change points
+cp1.seq     = seq(50, 950, 50)  # Define change points
 max.steps   = 50                # Max no of iterations in Adapt.SCAD
 lambda.grid = seq(1 * n.obs^(-1/3), 30 * n.obs^(-1/3), 1 * n.obs^(-1/3))   # Define grid of lambdas
 a           = 3.7             # Recommended value of parameter a for SCAD
+M = 50
+K = 20
 
 # Initiate cluster for parallel computing
-n.cores = detectCores()         # Number of cores to be used
+n.cores = 4 #detectCores()          # Number of cores to be used
 cl      = makeCluster(n.cores)
 registerDoParallel(cl)
 getDoParWorkers()
@@ -42,11 +44,11 @@ if (h != 0){
 }
 
 # True beta coefficients with change in t = cp1
-tmp1.1  = c(1, 1.5, 1, 1, 2, -3, -1.5, 1, 0, 5, 0, 1)
+tmp1.1  = c(1, 1, 1, 1, 1)
 tmp1.2  = rep(0, n.par - length(tmp1.1))
 b1      = c(tmp1.1, tmp1.2)
 
-tmp2.1  = c(1, 1.5, 0, 0, 2, -3, -1.5, 0, -4, 5)
+tmp2.1  = c(2, 2, 2, 2, 2)
 tmp2.2  = rep(0, n.par - length(tmp2.1))
 b2      = c(tmp2.1, tmp2.2)
 
@@ -111,30 +113,30 @@ adapt.fct = function(t, s, k){
   X.tmp         = X[[s]][t:(t + k * M - 1), ]
   Y.tmp         = Y[[s]][t:(t + k * M - 1)]
   adapt.tmp     = Adapt.SCAD(X.tmp, Y.tmp, a, k * M, max.steps) # Adaptive SCAD fit
-  values        = list(adapt.tmp$beta, adapt.tmp$penalty, adapt.tmp$weights)
+  values        = list(adapt.tmp$beta, adapt.tmp$penaltyprime, adapt.tmp$weights)
   names(values) = c("beta", "penalty", "weights")
   return(values)
 }
 
 # Function for test statistic computation
 test.stat = function(t, s, k){
-  X.tmp     = as.matrix(X[[s]][t:(t + k * M - 1), ])
-  Y.tmp     = as.matrix(Y[[s]][t:(t + k * M - 1)])
-  tmp1      = adapt.fct(t, s, k)
-  tmp2      = adapt.fct(t, s, k - 1)
-  beta.tmp1 = tmp1$beta
-  beta.tmp2 = tmp2$beta
+  X.tmp      = as.matrix(X[[s]][t:(t + k * M - 1), ])
+  Y.tmp      = as.matrix(Y[[s]][t:(t + k * M - 1)])
+  tmp1       = adapt.fct(t, s, k)
+  tmp2       = adapt.fct(t, s, k - 1)
+  beta.tmp1  = tmp1$beta
+  beta.tmp2  = tmp2$beta
+  pen.prime1 = tmp1$penalty
+  pen.prime2 = tmp2$penalty
   
-  loglik1   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp1)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp1))
-               # - ((k * M) * sum(tmp1$penalty))
-               )
-  loglik2   = (-(k * M)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-                                                      * t(Y.tmp - X.tmp %*% beta.tmp2)
-                                                      %*% (Y.tmp - X.tmp %*% beta.tmp2))
-               # - ((k * M) * sum(tmp2$penalty))
-               )
+  loglik1   = (- (1/(2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+                                                      %*% (Y.tmp - X.tmp %*% beta.tmp1)
+               - ((k * M) * t(pen.prime1) %*% abs(beta.tmp1)))
+  )
+  loglik2   = (- (1/(2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp2)
+                                                      %*% (Y.tmp - X.tmp %*% beta.tmp2)
+               - ((k * M) * t(pen.prime2) %*% abs(beta.tmp2)))
+  )
   test.stat = sqrt(2 * abs(loglik1 - loglik2))
   test.stat
 }
@@ -204,10 +206,11 @@ output.summary = function(final.chpts){
   return(values)
 }
 
-zeta.values = zeta95    # Choose the set of critical values to be used
+zeta.values = q95.NMB    # Choose the set of critical values to be used
 
 # Find the change points, chpts and icorr
 out.sum = list()
+Sys.time()
 for (num in 1:length(cp1.seq)){
   cp1 = cp1.seq[num]
   Y = Y.sim(cp1)
@@ -215,24 +218,21 @@ for (num in 1:length(cp1.seq)){
   out.sum[[num]] = output.summary(final.chpts)
   print(num)
 }
-
+Sys.time()
 
 # Close cluster
 stopCluster(cl)
-
-
-# In order to save time, here are some of the identified critical values
-
-# C.v.'s identified by multiplier bootstrap method
-zeta95 = c(1770.02275, 49.36315, 14.64020, 14.17828, 13.87526, 13.70207, 13.67552, 13.71178, 13.88155, 13.80665, 
-           13.75727, 13.74442, 13.68032, 13.62109, 13.56758, 13.51338, 13.46749, 13.41742, 13.37000, 13.33120,
-           13.29143, 13.25637, 13.22196, 13.18458)
 
 # C.v.'s identified by Chen&Niu(2014) method, where the model was fitted with the MLE method
 zeta.esterr.mle = c(Inf, 7.70, 4.41, 3.71, 2.97, 2.64, 2.32, 2.02, 1.96, 1.88, 1.73, 1.66, 
                     1.58, 1.58, 1.53, 1.29, 1.36, 1.35, 1.20, 1.17, 1.23, 1.18, 1.12, 1.22)
 
 # C.v.'s identified by Chen&Niu(2014) method, where the model was fitted with the Adapt.SCAD method
-zeta.esterr.scad.mle = c(Inf, 6.65, 4.09, 3.32, 2.68, 2.33, 1.93, 1.81, 1.69, 1.88, 1.54, 
-                         1.56, 1.56, 1.34, 1.36, 1.20, 1.31, 1.30, 1.17, 1.07, 1.07, 1.05, 1.12, 0.92)
+zeta.esterr.scad = c(Inf, 8.69, 4.80, 2.91, 2.68, 2.12, 2.52, 1.82, 1.88, 1.62, 1.51, 1.61, 1.48,
+                     1.51, 1.50, 1.28, 1.26, 1.16, 1.14, 1.40)
 
+length(zeta95scad)
+plot(zeta95scad[3:24], type = "l", ylim = c(0, max(zeta95scad[3:24])))
+lines(zeta95mle, col = "blue")
+lines(zeta.esterr.scad.mle, col = "red")
+lines(sqrt(2) * zeta.esterr.mle, col = "green")

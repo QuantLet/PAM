@@ -8,24 +8,24 @@ graphics.off()
 # setwd("")
 
 # Install and load packages
-libraries = c("MASS", "bbmle", "glmnet")
+libraries = c("MASS", "bbmle", "glmnet", "lars")
 lapply(libraries, function(x) if (!(x %in% installed.packages())) {
   install.packages(x)} )
 lapply(libraries, library, quietly = TRUE, character.only = TRUE)
 
 # Simulation setup
-n.obs      = 1200            # no of observations
-n.par      = 20              # no of parameters
+n.obs      = 1000            # no of observations
+n.par      = 10              # no of parameters
 n.sim      = 1000            # no of simulations
 seed1      = 20150206        # seed simulation X
 seed2      = 20150602        # seed simulation epsilon
 M          = 50              # increment of observations between successive subsamples
-K          = 24              # number of subsamples
+K          = 20              # number of subsamples
 sd.eps     = 1               # st. dev. of the error term
 risk.bound = gamma(1/2)      # define riskbound
 
 # True beta coefficients (homogeneous for all t = 1, ..., n.obs)
-tmp1  = c(1, 1.5, 1, 1, 2, -3, -1.5, 1, 2, 5, 3, 1)
+tmp1  = c(1, 1, 1, 1, 1)
 tmp2  = rep(0, n.par - length(tmp1))
 b     = c(tmp1, tmp2)
 
@@ -86,16 +86,14 @@ test.stat = function(s, k, l){
   X.tmp     = X[[s]][1:(k * M),]
   Y.tmp     = Y[[s]][1:(k * M)]
   beta.tmp1 = as.matrix(betas[[s]][, k])
-  loglik1   = (-(k * M)/2 * (2 * pi * sd.eps) 
-               - (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+  loglik1   = (- (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
                %*% (Y.tmp - X.tmp %*% beta.tmp1)))
 
   beta.tmp2 = as.matrix(betas[[s]][, l])
-  loglik2   = (-(k * M)/2 * (2 * pi * sd.eps) 
-               - (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp2)
+  loglik2   = (- (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp2)
                %*% (Y.tmp - X.tmp %*% beta.tmp2)))
      
-  test.stat = sqrt(abs(loglik1 - loglik2))
+  test.stat = sqrt(2*abs(loglik1 - loglik2))
   # test.stat = (abs(loglik1 - loglik2))^(1/3) # Different norm
   test.stat
 }
@@ -106,15 +104,13 @@ est.error = function(s, k){
   Y.tmp     = Y[[s]][1:(k * M)]
   beta.tmp1 = as.matrix(betas[[s]][, k])
   beta.true = solve(t(X[[s]]) %*% X[[s]]) %*% t(X[[s]]) %*% Y[[s]]
-  loglik1   = (-(k * M)/2 * (2 * pi * sd.eps) 
-               - (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+  loglik1   = (- (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
                   %*% (Y.tmp - X.tmp %*% beta.tmp1)))
 
-  loglik2   = (-(k * M)/2 * (2 * pi * sd.eps) 
-               - (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.true)
+  loglik2   = (- (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.true)
                   %*% (Y.tmp - X.tmp %*% beta.true)))
   
-  est.error = sqrt(abs(loglik1 - loglik2))
+  est.error = sqrt(2*abs(loglik1 - loglik2))
   # est.error = (abs(loglik1 - loglik2))^(1/3) # Different norm
   est.error
 }
@@ -137,16 +133,14 @@ dist.fct = function(s, k, l){
   X.tmp     = X[[s]][1:(k * M),]
   Y.tmp     = Y[[s]][1:(k * M)]
   beta.tmp1 = as.matrix(betas[[s]][, k])
-  loglik1   = (-(k * M)/2 * (2 * pi * sd.eps) 
-               - (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
+  loglik1   = (- (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp1)
                   %*% (Y.tmp - X.tmp %*% beta.tmp1)))
   
   beta.tmp2 = as.matrix(betas[[s]][, l])
-  loglik2   = (-(k * M)/2 * (2 * pi * sd.eps) 
-               - (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp2)
+  loglik2   = (- (1 / (2 * sd.eps^2) * t(Y.tmp - X.tmp %*% beta.tmp2)
                   %*% (Y.tmp - X.tmp %*% beta.tmp2)))
   
-  stoch.dist = sqrt(abs(loglik1 - loglik2))
+  stoch.dist = sqrt(2*abs(loglik1 - loglik2))
   # stoch.dist = (abs(loglik1 - loglik2))^(1/3) # Different norm
   stoch.dist
 }
@@ -214,10 +208,11 @@ Sys.time()
 
 
 # C.v.'s 
-zeta.esterr.mle = c(Inf, 7.70, 4.41, 3.71, 2.97, 2.64, 2.32, 2.02, 1.96, 1.88, 1.73, 1.66, 
-  1.58, 1.58, 1.53, 1.29, 1.36, 1.35, 1.20, 1.17, 1.23, 1.18, 1.12, 1.22)
+zeta.esterr.mle = c(Inf, 6.84, 5.18, 3.61, 3.27, 2.86, 2.79, 2.17, 2.17,
+                    2.04, 2.09, 1.78, 1.74, 1.71, 1.68, 1.62, 1.50, 1.34, 1.63, 1.81)
 
 # C.v.'s based on different norm
 zeta.esterr.mle.13 = c(Inf, 3.90, 2.69, 2.40, 2.07, 1.91, 1.75, 1.60, 1.57, 1.53, 1.44, 1.41, 1.36,
                        1.36, 1.33, 1.19, 1.23, 1.23, 1.13, 1.11, 1.15, 1.12, 1.08, 1.14)
-
+dim(as.matrix(c(Inf, 3.90, 2.69, 2.40, 2.07, 1.91, 1.75, 1.60, 1.57, 1.53, 1.44, 1.41, 1.36,
+  1.36, 1.33, 1.19, 1.23, 1.23, 1.13, 1.11, 1.15, 1.12, 1.08, 1.14)))[2]
