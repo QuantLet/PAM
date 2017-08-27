@@ -125,11 +125,22 @@ w.fct = function(beta){
 Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
   # X = X.tmp
   # Y = Y.tmp
-  # n.obs = k*M
+  # n.obs = 40
+  lambda.grid = c(c(1/(n.obs^seq(0.49, 0.01, -0.03)), seq(2,30,1)/(n.obs^0.01))/100, c(seq(2,30,1)/(n.obs^0.01)/10))     # Define grid of lambdas
   beta.tmp    = list()
   act.set     = list()
   weights.tmp = list()
   beta.prev   = list()
+  
+  # Normalize columns of X and Y
+  # one     = rep(1, n.obs)
+  # X.mean  = drop(one %*% X)/n.obs
+  # X.cent  = scale(X, X.mean, FALSE)
+  # X.norm  = sqrt(drop(one %*% (X.cent^2)))
+  # X       = scale(X.cent, FALSE, X.norm)
+  # 
+  # Y.mean  = drop(one %*% Y)/n.obs
+  # Y       = scale(Y, Y.mean, FALSE)
   
   # 0. STEP: Find initial values of coefficients - OLS fit
   beta.fit  = solve(t(X) %*% X) %*% t(X) %*% Y
@@ -140,7 +151,7 @@ Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
   # 1.a)
   Y.star = mu0.hat   # Create response according to the inital fit
   # Y.star = Y # Use response as it was observed/simulated
-  X.star = X 
+  X.star = as.matrix(X) 
   # Y.star   = X.star %*% beta.fit # Use this one to change Y in every step
   
   # Repeat until convergence
@@ -150,14 +161,14 @@ Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
     # Compute the best couple (lambda, beta(lambda)) for the current step of the algorithm
     for (l in 1:length(lambda.grid)){
       # l = 1
-      lambda   = lambda.grid[l]
+      lambda1   = lambda.grid[l]
       
       # 1.b)
-      X.U      = XU.fct(X.star, beta.fit, lambda, a)
-      XV.tmp   = XV.fct(X.star, beta.fit, lambda, a)
+      X.U      = XU.fct(X.star, beta.fit, lambda1, a)
+      XV.tmp   = XV.fct(X.star, beta.fit, lambda1, a)
       X.V      = XV.tmp$Xmatrix
       V.beta   = XV.tmp$betapar
-      ord      = order.fct(X.star, beta.fit, lambda, a)
+      ord      = order.fct(X.star, beta.fit, lambda1, a)
       
       # 1.c)
       if (X.V[1, 1] != -Inf){
@@ -171,9 +182,9 @@ Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
         
         # 2. STEP: Lasso estimation using CV
         if (dim(X.V)[2] == 1){
-          V.coeff.tmp = ifelse(abs(V.beta) <= 2 * lambda, 
-                               sign(V.beta) * max((abs(V.beta) - lambda), 0), 
-                               ((a - 1) * V.beta - sign(V.beta) * a * lambda)/(a - 2))
+          V.coeff.tmp = ifelse(abs(V.beta) <= 2 * lambda1, 
+                               sign(V.beta) * max((abs(V.beta) - lambda1), 0), 
+                               ((a - 1) * V.beta - sign(V.beta) * a * lambda1)/(a - 2))
           
           V.coeff       = V.coeff.tmp
           
@@ -182,7 +193,7 @@ Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
                                standardize = TRUE, intercept = FALSE) # Don't use LARS, lambda is fixed
           
           V.coeff.tmp   = as.vector(object$beta)  # Extract coefficients from the fit
-          V.coeff       = V.coeff.fct(V.coeff.tmp, beta.fit, lambda, a)
+          V.coeff       = V.coeff.fct(V.coeff.tmp, beta.fit, lambda1, a)
         }
         
         # 3. STEP: Coefficients associated with X_U and X_V
@@ -238,7 +249,7 @@ Adapt.SCAD = function(X, Y, a, n.obs, max.steps){
     if (step > max.steps) {break}
   }
   
-  values        = list(beta.fit, lambda.grid[index], step, act.set[[index]], weights.fit, pen.fit, pen.der)
+  values        = list(beta.fit, lambda.fit, step, act.set[[index]], weights.fit, pen.fit, pen.der)
   names(values) = c("beta", "lambda", "no.steps", "act.set", "weights", "penalty", "penaltyprime")
   return(values)
 }
@@ -253,6 +264,17 @@ Adapt.SCAD.MB = function(X, Y, a, n.obs, max.steps, lambda.value, multipl){
   
   Y = Y.tmp * sqrt(multipl)
   X = X.tmp * sqrt(multipl)
+
+  # Normalize columns of X and Y
+  # one     = rep(1, n.obs)
+  # X.mean  = drop(one %*% X)/n.obs
+  # X.cent  = scale(X, X.mean, FALSE)
+  # X.norm  = sqrt(drop(one %*% (X.cent^2)))
+  # X       = scale(X.cent, FALSE, X.norm)
+  # 
+  # Y.mean  = drop(one %*% Y)/n.obs
+  # Y       = scale(Y, Y.mean, FALSE) 
+  
   # 0. STEP: Find initial values of coefficients - OLS fit
   beta.fit  = solve(t(X) %*% X) %*% t(X) %*% Y
   mu0.hat   = X %*% beta.fit # Initial fit
@@ -300,7 +322,7 @@ Adapt.SCAD.MB = function(X, Y, a, n.obs, max.steps, lambda.value, multipl){
           V.coeff       = V.coeff.tmp
           
         } else {
-          object      = glmnet(X.V2star, Y.2star, family = "gaussian", alpha = 1, lambda = lambda.grid[l],
+          object      = glmnet(X.V2star, Y.2star, family = "gaussian", alpha = 1, lambda = lambda.value[l],
                                standardize = TRUE, intercept = FALSE) # Don't use LARS, lambda is fixed
           
           V.coeff.tmp   = as.vector(object$beta)  # Extract coefficients from the fit
@@ -347,22 +369,6 @@ Adapt.SCAD.MB = function(X, Y, a, n.obs, max.steps, lambda.value, multipl){
       gcv[l] = n.obs^(-1) * (t(Y - X.star %*% beta.tmp[[l]])
                              %*% (Y - X.star %*% beta.tmp[[l]])) / (1 - (act.set[[l]]/n.obs))
     }
-      
-    # loglik  = numeric(0)  
-    # for (l in 1:length(lambda.grid)){
-    #   loglik[l] =  (-(n.obs)/2 * log(2 * pi * sd.eps^2) - (1/(2 * sd.eps^2) 
-    #                                                        * t(Y.star - X.star %*% beta.tmp[[l]])
-    #                                                        %*% (Y.star - X.star %*% beta.tmp[[l]]))
-    #                 - ((n.obs) * sum(pen.prime(beta.tmp[[l]], lambda.grid[l], a))))
-    # }
-    
-    # c = 999
-    # loglik  = numeric(0)  
-    # for (l in 1:length(lambda.grid)){
-    #   loglik[l] =  (-(n.obs)/2 * log(2 * pi * sd.eps^2) * sum(multipliers[[k]][c, ]) - (1/(2 * sd.eps^2) 
-    #                   * sum((Y.star - X.star %*% beta.tmp[[l]])^2 * multipliers[[k]][c, ]))
-    #                 - ((n.obs) * sum(pen.prime(beta.tmp[[l]], lambda.grid[l], a))))
-    # }
     
     index         = which.min(gcv)
     beta.fit.prev = beta.prev[[index]]
@@ -381,30 +387,4 @@ Adapt.SCAD.MB = function(X, Y, a, n.obs, max.steps, lambda.value, multipl){
   return(values)
 }
 
-# beta.sim         = numeric(0)
-# lambda.sim       = numeric(0)
-# steps.sim        = numeric(0)
-# act.set.sim      = numeric(0)
-# beta.sim.1step   = numeric(0)
-# lambda.sim.1step = numeric(0)
-# steps.sim.1step  = numeric(0)
-# act.set.sim.1step  = numeric(0)
-# for (s in 1:n.sim){
-#   tmp               = Adapt.SCAD(X[[s]], Y[[s]], a, n.obs)
-#   tmp.1step         = SCAD.1step(X[[s]], Y[[s]], a)
-#   beta.sim          = cbind(beta.sim, tmp$beta)
-#   lambda.sim        = cbind(lambda.sim, tmp$lambda)
-#   steps.sim         = cbind(steps.sim, tmp$no.steps)
-#   act.set.sim       = cbind(act.set.sim, tmp$act.set)
-#   beta.sim.1step    = cbind(beta.sim.1step, tmp.1step$beta)
-#   lambda.sim.1step  = cbind(lambda.sim.1step, tmp.1step$lambda)
-#   steps.sim.1step   = cbind(steps.sim.1step, tmp.1step$no.steps)
-#   act.set.sim.1step = cbind(act.set.sim.1step, tmp.1step$act.set)
-# }
-# mean.beta.sim       = apply(beta.sim, 1, mean)
-# mean.beta.sim.1step = apply(beta.sim, 1, mean)
-# diff                = beta.sim - beta.sim.1step
-# summary(diff)
-# plot(mean.beta.sim, type = "l")
-# lines(mean.beta.sim.1step, col = "red")
-# beta.sim[,1]
+
