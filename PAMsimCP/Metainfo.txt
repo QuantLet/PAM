@@ -10,7 +10,7 @@ See also: ‘PAMsimLR, PAMCocPia, PAMinsam, PAMoutsam’
 
 Author: Lenka Zboňáková
 
-Submitted:  —, May 2018 by Lenka Zboňáková
+Submitted:  23 May 2018 by Lenka Zboňáková
 
 Input: 
 - n.obs   : Number of observations
