@@ -9,9 +9,17 @@ Name of Quantlet: PAMinsam
 
 Published in: submitted to N/A 
 
-Description: ‘Performs the Penalized Adaptive Method (PAM), a combination of propagation-separation approach and a SCAD penalty, to fit a model with possible structural changes on a given dataset. Compares the fit to models of Cochrane and Piazzesi (2005) and Ludvigson and Ng (2009). The input data are monthly observations of k-year excess bond risk premia, k = 2, 3, 4, 5, forward rates and other pre-defined macro variables. Computes RMSE, MAE, R^2 and adjusted R^2 for the fitted models. Plots the time series of the fitted vs. observed values of bond risk excess premia.'
+Description: ‘Performs the Penalized Adaptive Method (PAM), a combination of 
+propagation-separation approach and a SCAD penalty, to fit a model with possible 
+structural changes on a given dataset. Compares the fit to models 
+of Cochrane and Piazzesi (2005) and Ludvigson and Ng (2009). The input data are 
+monthly observations of k-year excess bond risk premia, k = 2, 3, 4, 5, forward 
+rates and other pre-defined macro variables. Computes RMSE, MAE, R^2 and adjusted 
+R^2 for the fitted models. Plots the time series of the fitted vs. observed values 
+of bond risk excess premia.'
 
-Keywords: ‘linear model, regression, SCAD penalty, bic, time varying, change point, bootstrap, plot, visualization, nonstationary, financial, returns’
+Keywords: ‘linear model, regression, SCAD penalty, bic, time varying, change point, 
+bootstrap, plot, visualization, nonstationary, financial, returns’
 
 See also: ‘PAMsimLR, PAMsimCP, PAMCocPia, PAMoutsam’
 
